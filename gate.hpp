@@ -3,26 +3,29 @@
 
 #include <mutex>               // mutex, unique_lock
 #include <condition_variable>  // condition_variable
-#include <atomic>              // atomic<>
 
 class Gate {
 private:
 
     std::mutex m;
     std::condition_variable cv;
-    std::atomic<bool> is_gate_open{ false };
+    bool is_gate_open = false;
 
 public:
 
     void open(void)
     {
+        m.lock();
         is_gate_open = true;
+        m.unlock();
         cv.notify_all();
     }
 
     void close(void)
     {
+        m.lock();
         is_gate_open = false;
+        m.unlock();
         cv.notify_all();
     }
 
