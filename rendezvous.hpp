@@ -48,7 +48,8 @@ private:
     // the 3rd has finished:
     //     bitmask_started  = 1101
     //     bitmask_finished = 0100 
-    std::atomic<unsigned> bitmask_started{ static_cast<unsigned>(-1) }, bitmask_finished{ static_cast<unsigned>(-1) };
+    std::atomic<unsigned> bitmask_started { static_cast<unsigned>(-1) },
+                          bitmask_finished{ static_cast<unsigned>(-1) };
 
     inline bool Are_All_Workers_Finished(void) const noexcept
     {
@@ -101,8 +102,8 @@ public:
                 || (bitmask_started == 0u)
                 || (bitmask_started == ((1u << how_many_worker_threads) - 1u)) );
 
-        bitmask_started  = 0u;  // This is the line that starts the spinners going again
         bitmask_finished = 0u;
+        bitmask_started  = 0u;  // This is the line that starts the spinners going again
 
 #ifdef RENDEZVOUS_JUST_SPIN
         /* Nothing */
