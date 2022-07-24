@@ -1,11 +1,29 @@
-#define RENDEZVOUS_32_SEMAPHORES
 #include "rendezvous.hpp"
 
 #include <iostream>  // cout, endl
 using std::cout;
 using std::endl;
 
-Distribute_Workload_And_Rendezvous_Later sar(3u);  // Three worker threads
+#include <algorithm>  // max
+using std::max;
+
+alignas(
+  max({
+    alignof(Rendezvous<1u>),
+    alignof(Rendezvous<2u>),
+    alignof(Rendezvous<3u>),
+    alignof(Rendezvous<4u>)
+  })
+)
+char unsigned buf[ max({
+    sizeof(Rendezvous<1u>),
+    sizeof(Rendezvous<2u>),
+    sizeof(Rendezvous<3u>),
+    sizeof(Rendezvous<4u>)
+}) ];
+
+#include <new>  // launder
+IRendezvous &sar = *std::launder(static_cast<IRendezvous*>(static_cast<void*>(buf + 0u)));
 
 void Thread_Entry_Point_A(void)
 {
@@ -45,31 +63,48 @@ void Thread_Entry_Point_C(void)
 
 int main(void)
 {
-    std::thread tA(Thread_Entry_Point_A), tB(Thread_Entry_Point_B), tC(Thread_Entry_Point_C);
-
     std::this_thread::sleep_for( std::chrono::milliseconds(500u) );
 
-    for (unsigned i = 0u; i != 12u; ++i)
+    for ( unsigned j = 1u; j <= 4u; ++j )
     {
-        /* ====== We start off with just one thread working ========= */
-        cout << "========================================= START\n";
+        switch ( j )
+        {
+        case 1u: ::new(buf) Rendezvous<1u>(3u); break;
+        case 2u: ::new(buf) Rendezvous<2u>(3u); break;
+        case 3u: ::new(buf) Rendezvous<3u>(3u); break;
+        case 4u: ::new(buf) Rendezvous<4u>(3u); break;
+        }
 
-        /* ====== Next we have 4 threads working in parallel ====== */
-        sar.Distribute_Workload();
+        cout << "================== Class: " << sar.Which_Derived_Class() << " ==================\n";
 
-        cout << "D\n";
+        std::jthread tA(Thread_Entry_Point_A), tB(Thread_Entry_Point_B), tC(Thread_Entry_Point_C);
 
-        /* ====== Next we go back to just one thread working ======== */
-        sar.Rendezvous();
+        for ( unsigned i = 0u; i != 12u; ++i )
+        {
+            /* ====== We start off with just one thread working ========= */
+            cout << "========================================= START\n";
 
-        cout << "========================================= FINISH\n";
+            /* ====== Next we have 4 threads working in parallel ====== */
+            sar.Distribute_Workload();
 
-        std::this_thread::sleep_for( std::chrono::milliseconds(500u) );
+            cout << "D\n";
+
+            /* ====== Next we go back to just one thread working ======== */
+            sar.Rendezvous();
+
+            cout << "========================================= FINISH\n";
+
+            std::this_thread::sleep_for( std::chrono::milliseconds(500u) );
+        }
+
+        sar.Finish();
+
+        switch ( j )
+        {
+        case 1u: std::launder(static_cast<Rendezvous<1u>*>(static_cast<void*>(&sar)))->~Rendezvous<1u>(); break;
+        case 2u: std::launder(static_cast<Rendezvous<2u>*>(static_cast<void*>(&sar)))->~Rendezvous<2u>(); break;
+        case 3u: std::launder(static_cast<Rendezvous<3u>*>(static_cast<void*>(&sar)))->~Rendezvous<3u>(); break;
+        case 4u: std::launder(static_cast<Rendezvous<4u>*>(static_cast<void*>(&sar)))->~Rendezvous<4u>(); break;
+        }
     }
-
-    sar.Finish();
-
-    tA.join();
-    tB.join();
-    tC.join();
 }
