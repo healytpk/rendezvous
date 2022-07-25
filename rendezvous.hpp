@@ -213,6 +213,8 @@ public:
     Rendezvous_Poll_Atomic &operator=(Rendezvous_Poll_Atomic       &&) = delete;
 };
 
+#include "gate.hpp"  // Gate
+
 class Rendezvous_One_Condition_Variable final : public IRendezvous {
 public:
 
@@ -231,20 +233,7 @@ private:
     std::atomic<unsigned> bitmask_started { static_cast<unsigned>(-1) },
                           bitmask_finished{ static_cast<unsigned>(-1) };
 
-    inline bool Are_All_Workers_Finished(void) const noexcept
-    {
-        // For example, if we have 5 worker threads, then:
-        //     Step 1: Shift 1 by 5 :       1u << 5u  ==  0b100000
-        //     Step 2: Subtract 1   : 0b100000  - 1u  ==   0b11111
-        //
-        // We know all threads are finished when all bits are set
-        assert( bitmask_finished < (1u << how_many_worker_threads) );
-
-        return ((1u << how_many_worker_threads) - 1u) == bitmask_finished;
-    }
-
-    std::condition_variable       cv_for_main_thread_waiting;
-    std::mutex                    mutex_for_cv;
+    Gate gate;
     std::counting_semaphore<16u>  sem{0u};
 
 public:
@@ -280,12 +269,7 @@ public:
         // only invoked from the main thread.
         assert( std::this_thread::get_id() == id_main_thread );
 
-        std::unique_lock<std::mutex> lock(mutex_for_cv);
-
-        while ( false == Are_All_Workers_Finished() )
-        {
-            cv_for_main_thread_waiting.wait(lock);
-        }
+        gate.wait_for_open_and_then_immediately_close_without_notification();
 
         if constexpr ( debug_rendezvous ) std::cerr << "Main thread: Rendezvous\n";
     }
@@ -364,12 +348,11 @@ public:
             if constexpr ( debug_rendezvous ) std::cerr << MakeStr("Worker thread ", thread_id, ": - - - REPORTING ALL WORK DONE - - -\n");
         }
 
-        bitmask_finished |= (1u << thread_id);  // For the last thread to finish, this will unspin the main thread
+        unsigned const tmp = bitmask_finished.fetch_or(1u << thread_id);
 
-        if ( Are_All_Workers_Finished() )
+        if ( tmp == ( ((1u << how_many_worker_threads) - 1u) - (1u << thread_id) ) )
         {
-            // All workers are now finished, so notify main thread
-            cv_for_main_thread_waiting.notify_one();
+            gate.open();
         }
     }
 
@@ -482,8 +465,6 @@ public:
     Rendezvous_32_Semaphores &operator=(Rendezvous_32_Semaphores const & ) = delete;
     Rendezvous_32_Semaphores &operator=(Rendezvous_32_Semaphores       &&) = delete;
 };
-
-#include "gate.hpp"  // Gate
 
 class Rendezvous_16_Gates final : public IRendezvous {
 public:
